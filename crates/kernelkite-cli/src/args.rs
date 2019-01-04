@@ -120,3 +120,44 @@ impl Cli {
     }
 
     fn simple(command: Command) -> Cli {
+        Cli {
+            interval_ms: 100,
+            max_frames: 100,
+            label: None,
+            network: false,
+            json: false,
+            command,
+        }
+    }
+}
+
+fn parse_num<T: std::str::FromStr>(v: Option<String>, flag: &str) -> Result<T, String> {
+    v.ok_or_else(|| format!("{flag} requires a value"))?
+        .parse()
+        .map_err(|_| format!("{flag} expects a number"))
+}
+
+fn parse_command(sub: &str, rest: Vec<String>) -> Result<Command, String> {
+    match sub {
+        "help" => Ok(Command::Help),
+        "version" => Ok(Command::Version),
+        "run" => {
+            // Layout: <bundle.json> -- <cmd> [args...]
+            let mut parts = rest.into_iter();
+            let out = parts
+                .next()
+                .ok_or_else(|| "run: missing output bundle path".to_string())?;
+            let sep = parts.next();
+            if sep.as_deref() != Some("--") {
+                return Err("run: expected `--` before the command to profile".into());
+            }
+            let command: Vec<String> = parts.collect();
+            if command.is_empty() {
+                return Err("run: no command specified after `--`".into());
+            }
+            Ok(Command::Run { out, command })
+        }
+        "replay" => {
+            let mut p = rest.into_iter();
+            let fixture = p
+                .next()
