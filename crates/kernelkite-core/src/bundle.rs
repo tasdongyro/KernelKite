@@ -15,3 +15,11 @@ pub fn from_json(raw: &str) -> Result<ProfileBundle> {
     if bundle.meta.schema_version != BUNDLE_SCHEMA_VERSION {
         return Err(Error::SchemaMismatch {
             found: bundle.meta.schema_version,
+            expected: BUNDLE_SCHEMA_VERSION,
+        });
+    }
+    Ok(bundle)
+}
+
+/// Write a bundle to a file path.
+pub fn save(bundle: &ProfileBundle, path: impl AsRef<std::path::Path>) -> Result<()> {
