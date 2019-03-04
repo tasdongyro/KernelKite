@@ -46,27 +46,3 @@ function cpuPolyline(series, plotX, plotWidth, laneTop, laneHeight, maxCpu) {
  * Render a full timeline SVG string. `maxCpu` normalises every lane to the same
  * scale so lanes are visually comparable; it defaults to the global maximum.
  */
-export function renderTimelineSvg(doc, options = {}) {
-    const opt = { ...DEFAULT_OPTIONS, ...options };
-    const lanes = doc.series.length;
-    const plotX = opt.labelWidth + opt.padding;
-    const plotWidth = opt.width - plotX - opt.padding;
-    const headerHeight = 52;
-    const height = headerHeight + lanes * opt.laneHeight + opt.padding;
-    const globalMaxCpu = Math.max(1, ...doc.series.flatMap((s) => s.cpu_pct));
-    const parts = [];
-    parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${opt.width}" height="${height}" ` +
-        `viewBox="0 0 ${opt.width} ${height}" role="img" ` +
-        `aria-label="kernelkite CPU timeline for ${escapeXml(doc.label)}">`);
-    parts.push(`<rect x="0" y="0" width="${opt.width}" height="${height}" fill="#0d1117"/>`);
-    parts.push(`<text x="${opt.padding}" y="24" fill="#e6edf3" font-family="monospace" ` +
-        `font-size="16" font-weight="bold">kernelkite — ${escapeXml(doc.label)} ` +
-        `[${escapeXml(doc.backend)}]</text>`);
-    const durMs = doc.t_ms.length > 0 ? doc.t_ms[doc.t_ms.length - 1] : 0;
-    parts.push(`<text x="${opt.padding}" y="42" fill="#8b949e" font-family="monospace" ` +
-        `font-size="11">${doc.series.length} processes · ${doc.t_ms.length} frames · ` +
-        `${durMs} ms · interval ${doc.interval_ms} ms</text>`);
-    doc.series.forEach((s, i) => {
-        const laneTop = headerHeight + i * opt.laneHeight;
-        const colour = PALETTE[i % PALETTE.length];
-        // Lane separator.
