@@ -99,3 +99,104 @@ impl ProcSampler {
         }
     }
 
+    fn read_stat(&self, pid: i32) -> Result<StatFields> {
+        let path = self.root.join(pid.to_string()).join("stat");
+        let raw = std::fs::read_to_string(&path)?;
+        parse_stat(&raw).ok_or_else(|| Error::Parse {
+            path: path.display().to_string(),
+            reason: "unexpected /proc/<pid>/stat layout".into(),
+        })
+    }
+
+    fn read_statm_rss_pages(&self, pid: i32) -> Result<(u64, u64)> {
+        let path = self.root.join(pid.to_string()).join("statm");
+        let raw = std::fs::read_to_string(&path)?;
+        let mut it = raw.split_whitespace();
+        let vsize_pages: u64 =
+            it.next()
+                .and_then(|v| v.parse().ok())
+                .ok_or_else(|| Error::Parse {
+                    path: path.display().to_string(),
+                    reason: "missing vsize field".into(),
+                })?;
+        let rss_pages: u64 =
+            it.next()
+                .and_then(|v| v.parse().ok())
+                .ok_or_else(|| Error::Parse {
+                    path: path.display().to_string(),
+                    reason: "missing rss field".into(),
+                })?;
+        Ok((vsize_pages, rss_pages))
+    }
+
+    fn read_io(&self, pid: i32) -> Option<(u64, u64)> {
+        let path = self.root.join(pid.to_string()).join("io");
+        let raw = std::fs::read_to_string(path).ok()?;
+        parse_io(&raw)
+    }
+
+    fn read_fd_count(&self, pid: i32) -> Option<u32> {
+        let path = self.root.join(pid.to_string()).join("fd");
+        let count = std::fs::read_dir(path).ok()?.count();
+        Some(count as u32)
+    }
+
+    fn read_network(&self) -> Option<NetworkSummary> {
+        let path = self.root.join("net").join("dev");
+        let raw = std::fs::read_to_string(path).ok()?;
+        parse_net_dev(&raw)
+    }
+}
+
+impl Sampler for ProcSampler {
+    fn backend(&self) -> Backend {
+        Backend::Proc
+    }
+
+    fn host_info(&self) -> HostInfo {
+        self.host
+    }
+
+    fn sample(&mut self, t_ms: u64) -> Result<Option<Frame>> {
+        let mut frame = Frame::new(t_ms);
+        for pid in self.selected_pids()? {
+            // A process may vanish between listing and reading; skip races.
+            let stat = match self.read_stat(pid) {
+                Ok(s) => s,
+                Err(Error::Io(_)) => continue,
+                Err(e) => return Err(e),
+            };
+            let (vsize_pages, rss_pages) = match self.read_statm_rss_pages(pid) {
+                Ok(v) => v,
+                Err(Error::Io(_)) => continue,
+                Err(e) => return Err(e),
+            };
+            let io = self.read_io(pid);
+            let open_fds = self.read_fd_count(pid);
+            frame.insert(ProcessSample {
+                pid,
+                ppid: stat.ppid,
+                comm: stat.comm,
+                utime_ticks: stat.utime,
+                stime_ticks: stat.stime,
+                rss_bytes: rss_pages.saturating_mul(self.host.page_size_bytes),
+                vsize_bytes: vsize_pages.saturating_mul(self.host.page_size_bytes),
+                threads: stat.num_threads.max(0) as u32,
+                read_bytes: io.map(|(r, _)| r),
+                write_bytes: io.map(|(_, w)| w),
+                open_fds,
+            });
+        }
+        if self.with_network {
+            frame.network = self.read_network();
+        }
+        Ok(Some(frame))
+    }
+}
+
+/// Fields extracted from `/proc/<pid>/stat`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatFields {
+    pub ppid: i32,
+    pub comm: String,
+    pub utime: u64,
