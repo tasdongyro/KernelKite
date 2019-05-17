@@ -33,15 +33,3 @@ impl Default for HostInfo {
 impl HostInfo {
     /// Detect host constants. On non-Linux platforms this returns the
     /// conventional defaults, which is sufficient for fixture replay.
-    pub fn detect() -> Self {
-        #[cfg(target_os = "linux")]
-        {
-            crate::proc_linux::detect_host_info()
-        }
-        #[cfg(not(target_os = "linux"))]
-        {
-            HostInfo::default()
-        }
-    }
-}
-
