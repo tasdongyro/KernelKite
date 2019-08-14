@@ -39,23 +39,3 @@ impl Fixture {
                         "fixture frames must be non-decreasing in t_ms (saw {} after {})",
                         f.t_ms, prev
                     )));
-                }
-            }
-            last = Some(f.t_ms);
-        }
-        Ok(fx)
-    }
-}
-
-/// Replays a [`Fixture`] frame by frame.
-pub struct FixtureSampler {
-    frames: std::vec::IntoIter<Frame>,
-    host: HostInfo,
-}
-
-impl FixtureSampler {
-    pub fn new(fixture: Fixture) -> Self {
-        FixtureSampler {
-            host: HostInfo {
-                clock_ticks_per_sec: fixture.clock_ticks_per_sec,
-                page_size_bytes: fixture.page_size_bytes,
