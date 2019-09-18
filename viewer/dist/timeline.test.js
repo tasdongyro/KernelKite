@@ -26,3 +26,17 @@ const doc = parseViewerDocument({
 });
 test("renders valid SVG root with a viewBox", () => {
     const svg = renderTimelineSvg(doc);
+    assert.match(svg, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+    assert.match(svg, /viewBox="0 0 \d+ \d+"/);
+    assert.ok(svg.trim().endsWith("</svg>"));
+});
+test("includes one polyline per series with data", () => {
+    const svg = renderTimelineSvg(doc);
+    const polylines = svg.match(/<polyline /g) ?? [];
+    assert.equal(polylines.length, 2);
+});
+test("labels every process by pid and comm", () => {
+    const svg = renderTimelineSvg(doc);
+    assert.match(svg, /6000 cargo/);
+    assert.match(svg, /6010 rustc/);
+});
