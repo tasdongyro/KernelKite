@@ -8,8 +8,3 @@ export interface TimelineOptions {
     width: number;
     laneHeight: number;
     labelWidth: number;
-    padding: number;
-}
-export declare const DEFAULT_OPTIONS: TimelineOptions;
-/**
- * Render a full timeline SVG string. `maxCpu` normalises every lane to the same
