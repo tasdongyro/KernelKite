@@ -16,3 +16,9 @@ export interface ViewerDocument {
     label: string;
     backend: string;
     interval_ms: number;
+    /** Milliseconds since capture start, one entry per frame. */
+    t_ms: number[];
+    series: ViewerSeries[];
+}
+/**
+ * Parse and validate an unknown value into a {@link ViewerDocument}. Throws a
