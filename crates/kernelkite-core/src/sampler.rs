@@ -21,15 +21,3 @@ pub struct HostInfo {
     pub page_size_bytes: u64,
 }
 
-impl Default for HostInfo {
-    fn default() -> Self {
-        HostInfo {
-            clock_ticks_per_sec: 100,
-            page_size_bytes: 4096,
-        }
-    }
-}
-
-impl HostInfo {
-    /// Detect host constants. On non-Linux platforms this returns the
-    /// conventional defaults, which is sufficient for fixture replay.
