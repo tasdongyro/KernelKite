@@ -2,3 +2,13 @@
 resolver = "2"
 members = [
     "crates/kernelkite-core",
+    "crates/kernelkite-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+authors = ["kernelkite contributors"]
+repository = "https://github.com/kernelkite/kernelkite"
