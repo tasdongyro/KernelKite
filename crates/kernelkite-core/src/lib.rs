@@ -66,3 +66,26 @@ pub mod proc_linux {
                 host: HostInfo::default(),
             }
         }
+
+        pub fn rooted(
+            _filter: PidFilter,
+            _with_network: bool,
+            _root: impl Into<std::path::PathBuf>,
+        ) -> Self {
+            ProcSampler {
+                host: HostInfo::default(),
+            }
+        }
+    }
+
+    impl Sampler for ProcSampler {
+        fn backend(&self) -> Backend {
+            Backend::Proc
+        }
+
+        fn host_info(&self) -> HostInfo {
+            self.host
+        }
+
+        fn sample(&mut self, _t_ms: u64) -> Result<Option<Frame>> {
+            Err(Error::Unsupported(
