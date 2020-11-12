@@ -4,6 +4,3 @@
 
 # Node / TypeScript viewer
 viewer/node_modules
-viewer/dist
-
-# OS / editor cruft
