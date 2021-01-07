@@ -200,3 +200,104 @@ pub struct StatFields {
     pub ppid: i32,
     pub comm: String,
     pub utime: u64,
+    pub stime: u64,
+    pub num_threads: i64,
+}
+
+/// Parse a `/proc/<pid>/stat` line.
+///
+/// The tricky part of this format is `comm`: it is wrapped in parentheses and
+/// may itself contain spaces or parentheses (e.g. `(foo (bar) baz)`). We locate
+/// the last `)` to end the comm, then split the remaining space-separated
+/// fields by their documented positional index (see `proc(5)`).
+pub fn parse_stat(raw: &str) -> Option<StatFields> {
+    let open = raw.find('(')?;
+    let close = raw.rfind(')')?;
+    if close <= open {
+        return None;
+    }
+    let comm = raw[open + 1..close].to_string();
+    // Fields after comm start at position 3 in proc(5) numbering (state = 3).
+    // The rest split cleanly on whitespace.
+    let rest: Vec<&str> = raw[close + 1..].split_whitespace().collect();
+    // rest[0] = state, rest[1] = ppid, rest[11] = utime, rest[12] = stime,
+    // rest[17] = num_threads (0-based indices after comm).
+    let ppid = rest.get(1)?.parse().ok()?;
+    let utime = rest.get(11)?.parse().ok()?;
+    let stime = rest.get(12)?.parse().ok()?;
+    let num_threads = rest.get(17)?.parse().ok()?;
+    Some(StatFields {
+        ppid,
+        comm,
+        utime,
+        stime,
+        num_threads,
+    })
+}
+
+/// Parse `/proc/<pid>/io`, returning `(read_bytes, write_bytes)`.
+///
+/// We prefer `read_bytes` / `write_bytes` (actual storage-layer transfer) over
+/// `rchar` / `wchar` (which count syscall bytes including cache hits).
+pub fn parse_io(raw: &str) -> Option<(u64, u64)> {
+    let mut read_bytes = None;
+    let mut write_bytes = None;
+    for line in raw.lines() {
+        let mut it = line.split_whitespace();
+        match it.next() {
+            Some("read_bytes:") => read_bytes = it.next().and_then(|v| v.parse().ok()),
+            Some("write_bytes:") => write_bytes = it.next().and_then(|v| v.parse().ok()),
+            _ => {}
+        }
+    }
+    Some((read_bytes?, write_bytes?))
+}
+
+/// Parse `/proc/net/dev` into a host-wide [`NetworkSummary`]. The loopback
+/// interface is excluded so the summary reflects off-host traffic.
+pub fn parse_net_dev(raw: &str) -> Option<NetworkSummary> {
+    let mut rx_total = 0u64;
+    let mut tx_total = 0u64;
+    let mut interfaces = Vec::new();
+    for line in raw.lines() {
+        let Some((name, rest)) = line.split_once(':') else {
+            continue; // header lines have no colon
+        };
+        let name = name.trim();
+        if name == "lo" || name.is_empty() {
+            continue;
+        }
+        let cols: Vec<&str> = rest.split_whitespace().collect();
+        // Column 0 = rx bytes, column 8 = tx bytes (see /proc/net/dev layout).
+        let rx: u64 = cols.first().and_then(|v| v.parse().ok())?;
+        let tx: u64 = cols.get(8).and_then(|v| v.parse().ok())?;
+        rx_total = rx_total.saturating_add(rx);
+        tx_total = tx_total.saturating_add(tx);
+        interfaces.push(name.to_string());
+    }
+    if interfaces.is_empty() {
+        return None;
+    }
+    interfaces.sort();
+    Some(NetworkSummary {
+        rx_bytes: rx_total,
+        tx_bytes: tx_total,
+        interfaces,
+    })
+}
+
+/// Detect host constants from the running Linux system.
+pub fn detect_host_info() -> HostInfo {
+    // SAFETY: sysconf is a pure, thread-safe libc query with no side effects.
+    let clk = unsafe { sysconf(SC_CLK_TCK) };
+    let page = unsafe { sysconf(SC_PAGESIZE) };
+    HostInfo {
+        clock_ticks_per_sec: if clk > 0 { clk as u64 } else { 100 },
+        page_size_bytes: if page > 0 { page as u64 } else { 4096 },
+    }
+}
+
+// Minimal libc bindings so the core has no external C-binding dependency.
+const SC_CLK_TCK: i32 = 2;
+const SC_PAGESIZE: i32 = 30;
+
