@@ -2,15 +2,3 @@
 <rect x="0" y="0" width="900" height="244" fill="#0d1117"/>
 <text x="16" y="24" fill="#e6edf3" font-family="monospace" font-size="16" font-weight="bold">kernelkite: before [fixture]</text>
 <text x="16" y="42" fill="#8b949e" font-family="monospace" font-size="11">4 processes · 7 frames · 1500 ms · interval 100 ms</text>
-<line x1="16" y1="52" x2="884" y2="52" stroke="#21262d" stroke-width="1"/>
-<text x="16" y="78" fill="#4c78a8" font-family="monospace" font-size="12">5000 cargo</text>
-<text x="150" y="78" fill="#8b949e" font-family="monospace" font-size="10" text-anchor="end">23.00 MiB</text>
-<polyline points="166.0,92.0 285.7,86.2 405.3,87.7 525.0,89.1 644.7,89.1 764.3,89.8 884.0,91.3" fill="none" stroke="#4c78a8" stroke-width="2" stroke-linejoin="round"/>
-<line x1="16" y1="96" x2="884" y2="96" stroke="#21262d" stroke-width="1"/>
-<text x="16" y="122" fill="#f58518" font-family="monospace" font-size="12">5010 rustc</text>
-<text x="150" y="122" fill="#8b949e" font-family="monospace" font-size="10" text-anchor="end">448.00 MiB</text>
-<polyline points="166.0,136.0 285.7,136.0 405.3,110.1 525.0,100.0 644.7,100.7 764.3,136.0 884.0,136.0" fill="none" stroke="#f58518" stroke-width="2" stroke-linejoin="round"/>
-<line x1="16" y1="140" x2="884" y2="140" stroke="#21262d" stroke-width="1"/>
-<text x="16" y="166" fill="#54a24b" font-family="monospace" font-size="12">5011 rustc</text>
-<text x="150" y="166" fill="#8b949e" font-family="monospace" font-size="10" text-anchor="end">432.00 MiB</text>
-<polyline points="166.0,180.0 285.7,180.0 405.3,180.0 525.0,146.2 644.7,146.2 764.3,180.0 884.0,180.0" fill="none" stroke="#54a24b" stroke-width="2" stroke-linejoin="round"/>
