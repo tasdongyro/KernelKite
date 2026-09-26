@@ -15,3 +15,39 @@ use crate::sampler::{HostInfo, Sampler};
 
 /// Placeholder sampler for the future eBPF backend. Constructing it succeeds,
 /// but sampling always fails with a clear "not implemented" error.
+pub struct EbpfSampler {
+    host: HostInfo,
+}
+
+impl EbpfSampler {
+    /// Create the stub. This intentionally performs no BPF program loading.
+    pub fn new() -> Self {
+        EbpfSampler {
+            host: HostInfo::detect(),
+        }
+    }
+}
+
+impl Default for EbpfSampler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Sampler for EbpfSampler {
+    fn backend(&self) -> Backend {
+        Backend::Ebpf
+    }
+
+    fn host_info(&self) -> HostInfo {
+        self.host
+    }
+
+    fn sample(&mut self, _t_ms: u64) -> Result<Option<Frame>> {
+        Err(Error::Unsupported(
+            "eBPF backend is a planned future feature and is not implemented; \
+             use the `proc` backend on Linux or `fixture` replay elsewhere"
+                .into(),
+        ))
+    }
+}
