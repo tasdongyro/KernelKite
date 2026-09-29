@@ -20,3 +20,95 @@
 //! eBPF data.
 //!
 //! ## Cross-platform note
+//!
+//! `/proc` only exists on Linux. On other platforms the [`proc_linux`] module
+//! is replaced by a compile-time shim whose `ProcSampler::sample` returns
+//! [`error::Error::Unsupported`], so the whole crate builds on Windows and
+//! macOS while remaining honest about what it can observe there.
+
+pub mod bundle;
+pub mod compare;
+pub mod ebpf;
+pub mod error;
+pub mod fixture;
+pub mod model;
+pub mod runner;
+pub mod sampler;
+
+#[cfg(target_os = "linux")]
+pub mod proc_linux;
+
+/// Non-Linux shim for the `/proc` backend so the crate compiles everywhere.
+/// The real implementation lives in the Linux-only module of the same name.
+#[cfg(not(target_os = "linux"))]
+pub mod proc_linux {
+    use crate::error::{Error, Result};
+    use crate::model::{Backend, Frame};
+    use crate::sampler::{HostInfo, Sampler};
+
+    /// Mirrors the Linux filter type so callers compile unchanged.
+    #[derive(Debug, Clone)]
+    pub enum PidFilter {
+        All,
+        Subtree(i32),
+        Set(Vec<i32>),
+    }
+
+    /// Non-Linux stand-in for the `/proc` sampler. Construction succeeds so
+    /// code paths type-check, but sampling reports that `/proc` is absent.
+    pub struct ProcSampler {
+        host: HostInfo,
+    }
+
+    impl ProcSampler {
+        pub fn new(_filter: PidFilter, _with_network: bool) -> Self {
+            ProcSampler {
+                host: HostInfo::default(),
+            }
+        }
+
+        pub fn rooted(
+            _filter: PidFilter,
+            _with_network: bool,
+            _root: impl Into<std::path::PathBuf>,
+        ) -> Self {
+            ProcSampler {
+                host: HostInfo::default(),
+            }
+        }
+    }
+
+    impl Sampler for ProcSampler {
+        fn backend(&self) -> Backend {
+            Backend::Proc
+        }
+
+        fn host_info(&self) -> HostInfo {
+            self.host
+        }
+
+        fn sample(&mut self, _t_ms: u64) -> Result<Option<Frame>> {
+            Err(Error::Unsupported(
+                "the /proc backend requires Linux; use `fixture` replay on this OS".into(),
+            ))
+        }
+    }
+
+    /// Non-Linux host detection just returns conventional defaults.
+    pub fn detect_host_info() -> HostInfo {
+        HostInfo::default()
+    }
+}
+
+// Convenient re-exports for downstream users.
+pub use bundle::{from_json, load, save, to_json};
+pub use compare::{compare, summarize, Comparison, Delta, Summary};
+pub use error::{Error, Result};
+pub use fixture::{Fixture, FixtureSampler};
+pub use model::{
+    Backend, CaptureMeta, Frame, NetworkSummary, ProcessSample, ProfileBundle,
+    BUNDLE_SCHEMA_VERSION,
+};
+pub use proc_linux::{PidFilter, ProcSampler};
+pub use runner::{capture, run_and_profile, CaptureOptions};
+pub use sampler::{HostInfo, Sampler};
