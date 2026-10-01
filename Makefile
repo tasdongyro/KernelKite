@@ -30,3 +30,36 @@ fmt: ## Format Rust sources
 fmt-check: ## Check formatting without writing
 	$(CARGO) fmt --all -- --check
 
+.PHONY: clippy
+clippy: ## Lint with clippy, warnings as errors
+	$(CARGO) clippy --workspace --all-targets -- -D warnings
+
+.PHONY: viewer
+viewer: ## Build and test the TypeScript viewer
+	cd viewer && $(NPM) ci || $(NPM) install
+	cd viewer && $(NPM) run build
+	cd viewer && $(NPM) test
+
+.PHONY: samples
+samples: build viewer ## Regenerate sample bundles, comparison, viewer docs and SVG
+	$(BIN) --label before replay fixtures/cargo-build-before.json samples/before.bundle.json
+	$(BIN) --label after  replay fixtures/cargo-build-after.json  samples/after.bundle.json
+	$(BIN) --json compare samples/before.bundle.json samples/after.bundle.json > samples/comparison.json
+	$(BIN) viewer samples/before.bundle.json samples/before.viewer.json
+	$(BIN) viewer samples/after.bundle.json  samples/after.viewer.json
+	node viewer/dist/cli.js samples/before.viewer.json samples/before.timeline.svg
+	node viewer/dist/cli.js samples/after.viewer.json  samples/after.timeline.html
+
+.PHONY: demo
+demo: build ## Print a summary + comparison from the shipped sample bundles
+	$(BIN) summary samples/before.bundle.json
+	@echo
+	$(BIN) compare samples/before.bundle.json samples/after.bundle.json
+
+.PHONY: ci
+ci: fmt-check clippy test viewer ## Everything CI runs
+
+.PHONY: clean
+clean: ## Remove build artifacts
+	$(CARGO) clean
+	rm -rf viewer/dist viewer/node_modules
