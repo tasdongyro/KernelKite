@@ -2,3 +2,23 @@
 resolver = "2"
 members = [
     "crates/kernelkite-core",
+    "crates/kernelkite-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+authors = ["kernelkite contributors"]
+repository = "https://github.com/kernelkite/kernelkite"
+description = "Linux-first local developer-loop process profiler"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
