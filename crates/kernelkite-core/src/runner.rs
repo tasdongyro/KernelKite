@@ -71,3 +71,77 @@ fn base_meta(sampler: &dyn Sampler, opts: &CaptureOptions) -> CaptureMeta {
 /// which keeps replay fast and deterministic.
 pub fn capture(mut sampler: impl Sampler, opts: &CaptureOptions) -> Result<ProfileBundle> {
     let meta = base_meta(&sampler, opts);
+    let is_fixture = sampler.backend() == Backend::Fixture;
+    let mut frames = Vec::new();
+    let start = Instant::now();
+
+    for i in 0..opts.max_frames {
+        let t_ms = if is_fixture {
+            // Fixture replay ignores the hint; use index-derived time only as
+            // a fallback for empty timestamps.
+            (i as u64) * opts.interval_ms
+        } else {
+            start.elapsed().as_millis() as u64
+        };
+        match sampler.sample(t_ms)? {
+            Some(frame) => frames.push(frame),
+            None => break,
+        }
+        if !is_fixture && i + 1 < opts.max_frames {
+            std::thread::sleep(Duration::from_millis(opts.interval_ms));
+        }
+    }
+
+    Ok(ProfileBundle { meta, frames })
+}
+
+/// Spawn `command`, profile it with `sampler` until it exits, and return the
+/// bundle including the child's exit code.
+///
+/// The sampler is expected to already be scoped to the interesting pids (for
+/// example a `PidFilter::Subtree` rooted at the child). The child pid is
+/// returned to the caller via `on_spawn` so a Linux caller can build such a
+/// subtree filter *after* the fork.
+pub fn run_and_profile<S, F>(
+    command: &[String],
+    mut make_sampler: F,
+    opts: &CaptureOptions,
+) -> Result<ProfileBundle>
+where
+    S: Sampler,
+    F: FnMut(u32) -> Result<S>,
+{
+    if command.is_empty() {
+        return Err(crate::error::Error::Invalid("empty command".into()));
+    }
+    let mut child = std::process::Command::new(&command[0])
+        .args(&command[1..])
+        .spawn()?;
+    let child_pid = child.id();
+
+    let mut sampler = make_sampler(child_pid)?;
+    let mut meta = base_meta(&sampler, opts);
+    meta.command = Some(command.to_vec());
+
+    let mut frames = Vec::new();
+    let start = Instant::now();
+
+    let exit_code = loop {
+        let t_ms = start.elapsed().as_millis() as u64;
+        if let Some(frame) = sampler.sample(t_ms)? {
+            frames.push(frame);
+        }
+        // Poll the child without blocking so we keep sampling on cadence.
+        if let Some(status) = child.try_wait()? {
+            break status.code();
+        }
+        if frames.len() >= opts.max_frames {
+            // Safety bound hit; stop sampling but still reap the child.
+            break child.wait()?.code();
+        }
+        std::thread::sleep(Duration::from_millis(opts.interval_ms));
+    };
+
+    meta.exit_code = exit_code;
+    Ok(ProfileBundle { meta, frames })
+}
