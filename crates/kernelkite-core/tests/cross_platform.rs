@@ -85,3 +85,91 @@ fn summarize_computes_cpu_and_io_deltas() {
     // read_bytes = cpu*10 delta: pid1000 (2000-0)+ pid1001 (1000-0) = 3000.
     assert_eq!(s.read_bytes, Some(3000));
     assert_eq!(s.write_bytes, Some(600));
+}
+
+#[test]
+fn compare_reports_expected_direction() {
+    let before = make_bundle("before", 400, 4096 * 200);
+    let after = make_bundle("after", 200, 4096 * 100);
+    let cmp = kk::compare(&before, &after);
+    let cpu = cmp
+        .deltas
+        .iter()
+        .find(|d| d.metric == "cpu_seconds")
+        .unwrap();
+    assert!(cpu.after < cpu.before, "after should be faster");
+    assert!(cpu.abs_change < 0.0);
+    assert!(cpu.pct_change.unwrap() < 0.0);
+}
+
+#[test]
+fn fixture_replay_is_deterministic() {
+    let fixture = kk::Fixture {
+        clock_ticks_per_sec: 100,
+        page_size_bytes: 4096,
+        frames: {
+            let mut v = Vec::new();
+            for i in 0..4u64 {
+                let mut f = Frame::new(i * 50);
+                f.insert(sample(42, 1, "cargo", i * 25, 1_000_000));
+                v.push(f);
+            }
+            v
+        },
+    };
+    let json = serde_json::to_string(&fixture).unwrap();
+
+    // Replaying the same fixture twice yields identical bundles.
+    let run_once = || {
+        let fx = kk::Fixture::from_json(&json).unwrap();
+        let sampler = kk::FixtureSampler::new(fx);
+        let opts = kk::CaptureOptions {
+            label: "replay".into(),
+            interval_ms: 50,
+            max_frames: 1000,
+            record_wall_clock: false,
+        };
+        kk::capture(sampler, &opts).unwrap()
+    };
+    let a = run_once();
+    let b = run_once();
+    assert_eq!(a.frames.len(), 4);
+    assert_eq!(kk::to_json(&a).unwrap(), kk::to_json(&b).unwrap());
+}
+
+#[test]
+fn fixture_rejects_out_of_order_frames() {
+    let mut fixture = kk::Fixture {
+        clock_ticks_per_sec: 100,
+        page_size_bytes: 4096,
+        frames: vec![Frame::new(100), Frame::new(50)],
+    };
+    // Ensure they carry at least one process so JSON is representative.
+    fixture.frames[0].insert(sample(1, 0, "init", 0, 4096));
+    let json = serde_json::to_string(&fixture).unwrap();
+    let err = kk::Fixture::from_json(&json).unwrap_err();
+    assert!(matches!(err, kk::Error::Invalid(_)));
+}
+
+#[test]
+fn process_tree_links_parent_and_child() {
+    let b = make_bundle("tree", 100, 4096);
+    let tree = b.process_tree();
+    // pid 1000's parent is 1; pid 1001's parent is 1000.
+    assert_eq!(tree.get(&1), Some(&vec![1000]));
+    assert_eq!(tree.get(&1000), Some(&vec![1001]));
+}
+
+#[test]
+fn ebpf_backend_is_not_implemented() {
+    let mut s = kk::ebpf::EbpfSampler::new();
+    assert_eq!(s.backend(), Backend::Ebpf);
+    let err = s.sample(0).unwrap_err();
+    match err {
+        kk::Error::Unsupported(msg) => {
+            assert!(msg.contains("eBPF"));
+            assert!(msg.contains("not implemented"));
+        }
+        other => panic!("expected Unsupported, got {other:?}"),
+    }
+}
