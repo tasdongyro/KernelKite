@@ -105,3 +105,111 @@ pub fn tree_text(bundle: &ProfileBundle) -> String {
 
     let mut out = String::new();
     out.push_str(&format!("Process tree ({} pids)\n", all_pids.len()));
+    for r in roots {
+        render_node(&mut out, r, &tree, &comm, 0);
+    }
+    out
+}
+
+fn render_node(
+    out: &mut String,
+    pid: i32,
+    tree: &std::collections::BTreeMap<i32, Vec<i32>>,
+    comm: &std::collections::BTreeMap<i32, String>,
+    depth: usize,
+) {
+    let name = comm.get(&pid).map(String::as_str).unwrap_or("?");
+    out.push_str(&format!("{}{} {}\n", "  ".repeat(depth), pid, name));
+    if let Some(children) = tree.get(&pid) {
+        for c in children {
+            if *c != pid {
+                render_node(out, *c, tree, comm, depth + 1);
+            }
+        }
+    }
+}
+
+// ---- Viewer document ------------------------------------------------------
+
+/// A per-process series consumed by the TypeScript timeline viewer.
+#[derive(Debug, Serialize)]
+pub struct ViewerSeries {
+    pub pid: i32,
+    pub ppid: i32,
+    pub comm: String,
+    /// CPU utilisation percentage per frame (0..N*100 for multi-core).
+    pub cpu_pct: Vec<f64>,
+    /// Resident memory per frame in bytes.
+    pub rss_bytes: Vec<u64>,
+}
+
+/// Top-level document handed to the viewer: shared time axis plus series.
+#[derive(Debug, Serialize)]
+pub struct ViewerDocument {
+    pub label: String,
+    pub backend: String,
+    pub interval_ms: u64,
+    pub t_ms: Vec<u64>,
+    pub series: Vec<ViewerSeries>,
+}
+
+/// Build a [`ViewerDocument`] from a bundle by computing per-frame CPU% from
+/// the delta of cumulative CPU ticks between adjacent frames.
+pub fn viewer_document(bundle: &ProfileBundle) -> ViewerDocument {
+    let ticks_per_sec = bundle.meta.clock_ticks_per_sec.max(1) as f64;
+    let t_ms: Vec<u64> = bundle.frames.iter().map(|f| f.t_ms).collect();
+    let pids = bundle.pids();
+
+    let mut series = Vec::with_capacity(pids.len());
+    for pid in pids {
+        let mut cpu_pct = Vec::with_capacity(bundle.frames.len());
+        let mut rss_bytes = Vec::with_capacity(bundle.frames.len());
+        let mut ppid = 0;
+        let mut comm = String::new();
+        let mut prev_cpu: Option<u64> = None;
+        let mut prev_t: Option<u64> = None;
+
+        for f in &bundle.frames {
+            if let Some(s) = f.processes.get(&pid) {
+                ppid = s.ppid;
+                comm = s.comm.clone();
+                let cpu = s.utime_ticks + s.stime_ticks;
+                let pct = match (prev_cpu, prev_t) {
+                    (Some(pc), Some(pt)) if f.t_ms > pt => {
+                        let dticks = cpu.saturating_sub(pc) as f64;
+                        let dt_secs = (f.t_ms - pt) as f64 / 1000.0;
+                        if dt_secs > 0.0 {
+                            (dticks / ticks_per_sec) / dt_secs * 100.0
+                        } else {
+                            0.0
+                        }
+                    }
+                    _ => 0.0,
+                };
+                cpu_pct.push(pct);
+                rss_bytes.push(s.rss_bytes);
+                prev_cpu = Some(cpu);
+                prev_t = Some(f.t_ms);
+            } else {
+                // Process absent this frame: hold at zero to keep arrays aligned.
+                cpu_pct.push(0.0);
+                rss_bytes.push(0);
+            }
+        }
+        series.push(ViewerSeries {
+            pid,
+            ppid,
+            comm,
+            cpu_pct,
+            rss_bytes,
+        });
+    }
+
+    ViewerDocument {
+        label: bundle.meta.label.clone(),
+        backend: bundle.meta.backend.as_str().to_string(),
+        interval_ms: bundle.meta.interval_ms,
+        t_ms,
+        series,
+    }
+}
