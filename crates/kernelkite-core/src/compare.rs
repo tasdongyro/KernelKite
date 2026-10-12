@@ -66,3 +66,139 @@ pub fn summarize(bundle: &ProfileBundle) -> Summary {
             if t.first_cpu.is_none() {
                 t.first_cpu = Some(cpu);
             }
+            t.last_cpu = cpu;
+            if let (Some(r), Some(w)) = (s.read_bytes, s.write_bytes) {
+                t.saw_io = true;
+                if t.first_read.is_none() {
+                    t.first_read = Some(r);
+                }
+                t.last_read = r;
+                if t.first_write.is_none() {
+                    t.first_write = Some(w);
+                }
+                t.last_write = w;
+            }
+        }
+        peak_rss = peak_rss.max(frame_rss);
+        if let Some(n) = &frame.network {
+            if first_net.is_none() {
+                first_net = Some((n.rx_bytes, n.tx_bytes));
+            }
+            last_net = Some((n.rx_bytes, n.tx_bytes));
+        }
+    }
+
+    let mut cpu_ticks = 0u64;
+    let mut read_total = 0u64;
+    let mut write_total = 0u64;
+    let mut any_io = false;
+    for t in tracks.values() {
+        if let Some(first) = t.first_cpu {
+            cpu_ticks = cpu_ticks.saturating_add(t.last_cpu.saturating_sub(first));
+        }
+        if t.saw_io {
+            any_io = true;
+            if let Some(fr) = t.first_read {
+                read_total = read_total.saturating_add(t.last_read.saturating_sub(fr));
+            }
+            if let Some(fw) = t.first_write {
+                write_total = write_total.saturating_add(t.last_write.saturating_sub(fw));
+            }
+        }
+    }
+
+    let (net_rx, net_tx) = match (first_net, last_net) {
+        (Some((rx0, tx0)), Some((rx1, tx1))) => {
+            (Some(rx1.saturating_sub(rx0)), Some(tx1.saturating_sub(tx0)))
+        }
+        _ => (None, None),
+    };
+
+    Summary {
+        label: bundle.meta.label.clone(),
+        backend: bundle.meta.backend.as_str().to_string(),
+        duration_ms: bundle.duration_ms(),
+        frames: bundle.frames.len(),
+        distinct_pids: tracks.len(),
+        cpu_seconds: cpu_ticks as f64 / ticks_per_sec,
+        peak_rss_bytes: peak_rss,
+        read_bytes: if any_io { Some(read_total) } else { None },
+        write_bytes: if any_io { Some(write_total) } else { None },
+        net_rx_bytes: net_rx,
+        net_tx_bytes: net_tx,
+    }
+}
+
+/// A single before/after metric delta.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Delta {
+    pub metric: String,
+    pub before: f64,
+    pub after: f64,
+    pub abs_change: f64,
+    /// Percentage change relative to `before`. `None` when `before` is zero.
+    pub pct_change: Option<f64>,
+}
+
+impl Delta {
+    fn new(metric: &str, before: f64, after: f64) -> Self {
+        let abs = after - before;
+        let pct = if before.abs() > f64::EPSILON {
+            Some(abs / before * 100.0)
+        } else {
+            None
+        };
+        Delta {
+            metric: metric.to_string(),
+            before,
+            after,
+            abs_change: abs,
+            pct_change: pct,
+        }
+    }
+}
+
+/// Full before/after comparison report.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Comparison {
+    pub before: Summary,
+    pub after: Summary,
+    pub deltas: Vec<Delta>,
+}
+
+/// Compare two bundles and produce a deterministic list of deltas.
+pub fn compare(before: &ProfileBundle, after: &ProfileBundle) -> Comparison {
+    let b = summarize(before);
+    let a = summarize(after);
+    let mut deltas = vec![
+        Delta::new("duration_ms", b.duration_ms as f64, a.duration_ms as f64),
+        Delta::new("cpu_seconds", b.cpu_seconds, a.cpu_seconds),
+        Delta::new(
+            "peak_rss_bytes",
+            b.peak_rss_bytes as f64,
+            a.peak_rss_bytes as f64,
+        ),
+        Delta::new(
+            "distinct_pids",
+            b.distinct_pids as f64,
+            a.distinct_pids as f64,
+        ),
+    ];
+    if let (Some(br), Some(ar)) = (b.read_bytes, a.read_bytes) {
+        deltas.push(Delta::new("read_bytes", br as f64, ar as f64));
+    }
+    if let (Some(bw), Some(aw)) = (b.write_bytes, a.write_bytes) {
+        deltas.push(Delta::new("write_bytes", bw as f64, aw as f64));
+    }
+    if let (Some(brx), Some(arx)) = (b.net_rx_bytes, a.net_rx_bytes) {
+        deltas.push(Delta::new("net_rx_bytes", brx as f64, arx as f64));
+    }
+    if let (Some(btx), Some(atx)) = (b.net_tx_bytes, a.net_tx_bytes) {
+        deltas.push(Delta::new("net_tx_bytes", btx as f64, atx as f64));
+    }
+    Comparison {
+        before: b,
+        after: a,
+        deltas,
+    }
+}
