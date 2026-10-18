@@ -27,3 +27,32 @@ function main(argv) {
     }
     catch (e) {
         process.stderr.write(`error: cannot read ${inputPath}: ${String(e)}\n`);
+        return 1;
+    }
+    let doc;
+    try {
+        doc = parseViewerDocument(JSON.parse(raw));
+    }
+    catch (e) {
+        process.stderr.write(`error: invalid viewer document: ${String(e)}\n`);
+        return 1;
+    }
+    const svg = renderTimelineSvg(doc);
+    if (!outPath) {
+        process.stdout.write(svg + "\n");
+        return 0;
+    }
+    const output = outPath.toLowerCase().endsWith(".html")
+        ? renderStandaloneHtml(doc, svg)
+        : svg;
+    try {
+        writeFileSync(outPath, output);
+        process.stderr.write(`wrote ${outPath}\n`);
+    }
+    catch (e) {
+        process.stderr.write(`error: cannot write ${outPath}: ${String(e)}\n`);
+        return 1;
+    }
+    return 0;
+}
+process.exit(main(process.argv));
