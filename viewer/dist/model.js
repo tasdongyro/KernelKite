@@ -35,3 +35,41 @@ export function parseViewerDocument(input) {
         if (typeof s.pid !== "number")
             throw new Error(`series[${i}].pid must be a number`);
         if (typeof s.ppid !== "number")
+            throw new Error(`series[${i}].ppid must be a number`);
+        if (typeof s.comm !== "string")
+            throw new Error(`series[${i}].comm must be a string`);
+        if (!isNumberArray(s.cpu_pct))
+            throw new Error(`series[${i}].cpu_pct must be numbers`);
+        if (!isNumberArray(s.rss_bytes))
+            throw new Error(`series[${i}].rss_bytes must be numbers`);
+        if (s.cpu_pct.length !== frames || s.rss_bytes.length !== frames) {
+            throw new Error(`series[${i}] arrays (len ${s.cpu_pct.length}/${s.rss_bytes.length}) ` +
+                `must match ${frames} frames`);
+        }
+        return {
+            pid: s.pid,
+            ppid: s.ppid,
+            comm: s.comm,
+            cpu_pct: s.cpu_pct,
+            rss_bytes: s.rss_bytes,
+        };
+    });
+    return {
+        label: doc.label,
+        backend: doc.backend,
+        interval_ms: doc.interval_ms,
+        t_ms: doc.t_ms,
+        series,
+    };
+}
+/** Format a byte count with a binary unit suffix (matches the Rust CLI). */
+export function humanBytes(n) {
+    const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+    let v = n;
+    let u = 0;
+    while (v >= 1024 && u < units.length - 1) {
+        v /= 1024;
+        u += 1;
+    }
+    return u === 0 ? `${n} B` : `${v.toFixed(2)} ${units[u]}`;
+}
