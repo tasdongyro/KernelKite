@@ -9,3 +9,14 @@
 
 export {
   ViewerDocument,
+  ViewerSeries,
+  parseViewerDocument,
+  humanBytes,
+} from "./model.js";
+
+export {
+  TimelineOptions,
+  DEFAULT_OPTIONS,
+  renderTimelineSvg,
+  renderStandaloneHtml,
+} from "./timeline.js";
