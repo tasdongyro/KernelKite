@@ -4,3 +4,27 @@
  * process, with CPU% and RSS arrays aligned to that axis.
  */
 export interface ViewerSeries {
+    pid: number;
+    ppid: number;
+    comm: string;
+    /** CPU utilisation percent per frame (can exceed 100 on multi-core). */
+    cpu_pct: number[];
+    /** Resident memory per frame in bytes. */
+    rss_bytes: number[];
+}
+export interface ViewerDocument {
+    label: string;
+    backend: string;
+    interval_ms: number;
+    /** Milliseconds since capture start, one entry per frame. */
+    t_ms: number[];
+    series: ViewerSeries[];
+}
+/**
+ * Parse and validate an unknown value into a {@link ViewerDocument}. Throws a
+ * descriptive error if the shape is wrong or the series arrays are not aligned
+ * to the time axis — the same invariant the Rust exporter guarantees.
+ */
+export declare function parseViewerDocument(input: unknown): ViewerDocument;
+/** Format a byte count with a binary unit suffix (matches the Rust CLI). */
+export declare function humanBytes(n: number): string;
